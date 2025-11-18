@@ -5,9 +5,10 @@ namespace LexiconLookup
     /// </summary>
     public class LetterSet
     {
-        private ILetterIndex _letterIndex;
         private int[] _letterCounts;
         private int _blankCount;
+        private Dictionary<char, int> _charToIndex;
+        private LetterIndex _letterIndex;
 
         /// <summary>
         /// Creates a LetterSet from a dictionary of letter counts using the specified alphabet mapping.
@@ -19,11 +20,13 @@ namespace LexiconLookup
         /// <param name="letterIndex">
         /// The alphabet mapping to use for indexing letters. If null, a default Swedish alphabet is used.
         /// </param>
-        public LetterSet(Dictionary<char, int> letterCounts, ILetterIndex? letterIndex = null)
+        public LetterSet(Dictionary<char, int> letterCounts, LetterIndex? letterIndex = null)
         {
-            _letterIndex = letterIndex ?? new SwedishLetterIndex();
+            _letterIndex = letterIndex ?? new LetterIndex("AÅÄBCDEFGHIJKLMNOPQRSTUVWXYZ", "?*");
+
             _letterCounts = new int[_letterIndex.LetterCount];
             _blankCount = 0;
+            _charToIndex = _letterIndex.GetCharToIndex();
 
             foreach (KeyValuePair<char, int> kvp in letterCounts)
             {
@@ -38,7 +41,7 @@ namespace LexiconLookup
                 }
                 else
                 {
-                    int index = _letterIndex.GetIndex(letter);
+                    int index = _charToIndex.ContainsKey(letter) ? _charToIndex[letter] : -1;
                     if (index >= 0)
                     {
                         _letterCounts[index] += kvp.Value;
@@ -57,7 +60,7 @@ namespace LexiconLookup
         /// <param name="letters">String containing letters to count.</param>
         /// <param name="letterIndex">Optional alphabet mapping; defaults to Swedish if null.</param>
         /// <returns>A new LetterSet instance.</returns>
-        public static LetterSet FromString(string letters, ILetterIndex? letterIndex = null)
+        public static LetterSet FromString(string letters, LetterIndex? letterIndex = null)
         {
             Dictionary<char, int> counts = new Dictionary<char, int>();
 
@@ -85,8 +88,7 @@ namespace LexiconLookup
         /// <returns>The count of the letter, or 0 if not present.</returns>
         public int GetCount(char letter)
         {
-            char upperLetter = char.ToUpperInvariant(letter);
-            int idx = _letterIndex.GetIndex(upperLetter);
+            int idx = _charToIndex.ContainsKey(letter) ? _charToIndex[letter] : -1;
             return idx >= 0 ? _letterCounts[idx] : 0;
         }
 
@@ -113,7 +115,7 @@ namespace LexiconLookup
         /// <summary>Try to consume a real letter tile. Returns true if successful.</summary>
         public bool TryUseLetter(char letter)
         {
-            int idx = _letterIndex.GetIndex(char.ToUpperInvariant(letter));
+            int idx = _charToIndex.TryGetValue(letter, out int index) ? index : -1;
             if (idx >= 0 && _letterCounts[idx] > 0)
             {
                 _letterCounts[idx]--;
@@ -125,7 +127,7 @@ namespace LexiconLookup
         /// <summary>Restore a previously used real letter tile.</summary>
         public void RestoreLetter(char letter)
         {
-            int idx = _letterIndex.GetIndex(char.ToUpperInvariant(letter));
+            int idx = _charToIndex[letter];
             if (idx >= 0)
                 _letterCounts[idx]++;
             else
