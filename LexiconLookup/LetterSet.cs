@@ -3,55 +3,68 @@ namespace LexiconLookup
     /// <summary>
     /// Represents a set of letters with their frequencies, supporting blank tiles as wildcards.
     /// </summary>
-    public readonly struct LetterSet
+    public class LetterSet
     {
-        private readonly Dictionary<char, int> _letterCounts;
-        private readonly int _blankCount;
+        private ILetterIndex _letterIndex;
+        private int[] _letterCounts;
+        private int _blankCount;
 
         /// <summary>
-        /// Creates a LetterSet from a dictionary of letter counts.
+        /// Creates a LetterSet from a dictionary of letter counts using the specified alphabet mapping.
+        /// Blanks are represented by '?' or '*' and counted separately from the letters.
         /// </summary>
-        /// <param name="letterCounts">Dictionary mapping each letter to its count. Blank tiles represented by '?' or '*'.</param>
-        public LetterSet(Dictionary<char, int> letterCounts)
+        /// <param name="letterCounts">
+        /// Dictionary mapping each letter to its count. Letters not in the provided alphabet will cause an exception.
+        /// </param>
+        /// <param name="letterIndex">
+        /// The alphabet mapping to use for indexing letters. If null, a default Swedish alphabet is used.
+        /// </param>
+        public LetterSet(Dictionary<char, int> letterCounts, ILetterIndex? letterIndex = null)
         {
-            _letterCounts = new Dictionary<char, int>();
+            _letterIndex = letterIndex ?? new SwedishLetterIndex();
+            _letterCounts = new int[_letterIndex.LetterCount];
             _blankCount = 0;
 
             foreach (KeyValuePair<char, int> kvp in letterCounts)
             {
+                if (kvp.Value <= 0)
+                    continue;
+
                 char letter = char.ToUpperInvariant(kvp.Key);
-                
-                if (letter == '?' || letter == '*')
+
+                if (_letterIndex.IsBlank(letter))
                 {
                     _blankCount += kvp.Value;
                 }
-                else if (kvp.Value > 0)
+                else
                 {
-                    if (_letterCounts.ContainsKey(letter))
+                    int index = _letterIndex.GetIndex(letter);
+                    if (index >= 0)
                     {
-                        _letterCounts[letter] += kvp.Value;
+                        _letterCounts[index] += kvp.Value;
                     }
                     else
                     {
-                        _letterCounts[letter] = kvp.Value;
+                        throw new ArgumentException($"Invalid letter '{kvp.Key}' in letter counts.");
                     }
                 }
             }
         }
 
         /// <summary>
-        /// Creates a LetterSet from a string where each character appears as many times as available.
+        /// Creates a LetterSet from a string.
         /// </summary>
-        /// <param name="letters">String containing letters (e.g., "AAETR" for 2 A's, 1 E, 1 T, 1 R). Use '?' or '*' for blanks.</param>
+        /// <param name="letters">String containing letters to count.</param>
+        /// <param name="letterIndex">Optional alphabet mapping; defaults to Swedish if null.</param>
         /// <returns>A new LetterSet instance.</returns>
-        public static LetterSet FromString(string letters)
+        public static LetterSet FromString(string letters, ILetterIndex? letterIndex = null)
         {
             Dictionary<char, int> counts = new Dictionary<char, int>();
-            
+
             foreach (char character in letters)
             {
                 char letter = char.ToUpperInvariant(character);
-                
+
                 if (counts.ContainsKey(letter))
                 {
                     counts[letter]++;
@@ -61,8 +74,8 @@ namespace LexiconLookup
                     counts[letter] = 1;
                 }
             }
-            
-            return new LetterSet(counts);
+
+            return new LetterSet(counts, letterIndex ?? null);
         }
 
         /// <summary>
@@ -73,7 +86,8 @@ namespace LexiconLookup
         public int GetCount(char letter)
         {
             char upperLetter = char.ToUpperInvariant(letter);
-            return _letterCounts.TryGetValue(upperLetter, out int count) ? count : 0;
+            int idx = _letterIndex.GetIndex(upperLetter);
+            return idx >= 0 ? _letterCounts[idx] : 0;
         }
 
         /// <summary>
@@ -84,22 +98,68 @@ namespace LexiconLookup
         /// <summary>
         /// Gets all letters in this set.
         /// </summary>
-        public IEnumerable<char> Letters => _letterCounts.Keys;
-
-        /// <summary>
-        /// Creates a copy of the letter counts for internal use.
-        /// </summary>
-        internal Dictionary<char, int> GetLetterCountsCopy()
+        public IEnumerable<char> Letters
         {
-            return new Dictionary<char, int>(_letterCounts);
+            get
+            {
+                for (int i = 0; i < _letterCounts.Length; i++)
+                {
+                    if (_letterCounts[i] > 0)
+                        yield return _letterIndex.GetLetter(i);
+                }
+            }
         }
 
-        /// <summary>
-        /// Creates a copy of the letter counts for external use.
-        /// </summary>
+        /// <summary>Try to consume a real letter tile. Returns true if successful.</summary>
+        public bool TryUseLetter(char letter)
+        {
+            int idx = _letterIndex.GetIndex(char.ToUpperInvariant(letter));
+            if (idx >= 0 && _letterCounts[idx] > 0)
+            {
+                _letterCounts[idx]--;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>Restore a previously used real letter tile.</summary>
+        public void RestoreLetter(char letter)
+        {
+            int idx = _letterIndex.GetIndex(char.ToUpperInvariant(letter));
+            if (idx >= 0)
+                _letterCounts[idx]++;
+            else
+                throw new ArgumentException($"Invalid letter '{letter}' for restoring.");
+        }
+
+        /// <summary>Try to consume a blank tile. Returns true if successful.</summary>
+        public bool TryUseBlank()
+        {
+            if (_blankCount > 0)
+            {
+                _blankCount--;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>Restore a previously used blank tile.</summary>
+        public void RestoreBlank()
+        {
+            _blankCount++;
+        }
+
+        /// <summary> 
+        /// Creates a copy of the letter counts for internal use. 
+        /// </summary> 
         public Dictionary<char, int> GetLetterCounts()
         {
-            return new Dictionary<char, int>(_letterCounts);
+            Dictionary<char, int> result = new Dictionary<char, int>();
+            for (int i = 0; i < _letterCounts.Length; i++)
+            {
+                if (_letterCounts[i] > 0) result[_letterIndex.GetLetter(i)] = _letterCounts[i];
+            }
+            return result;
         }
     }
 }

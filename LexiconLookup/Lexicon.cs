@@ -21,21 +21,21 @@ namespace LexiconLookup
         public async Task InitializeAsync(Stream dictionaryStream)
         {
             _root = new TrieNode();
-            
+
             using (StreamReader reader = new StreamReader(dictionaryStream, leaveOpen: true))
             {
                 string? line;
                 while ((line = await reader.ReadLineAsync()) != null)
                 {
                     string word = line.Trim().ToUpperInvariant();
-                    
+
                     if (string.IsNullOrWhiteSpace(word))
                         continue;
-                    
+
                     InsertWord(word);
                 }
             }
-            
+
             _initialized = true;
         }
 
@@ -44,15 +44,13 @@ namespace LexiconLookup
         {
             if (!_initialized)
                 throw new InvalidOperationException("Lexicon must be initialized before finding words.");
-            
+
             List<string> results = new List<string>();
-            Dictionary<char, int> availableLetters = letters.GetLetterCountsCopy();
-            int availableBlanks = letters.BlankCount;
-            
+
             char[] currentWord = new char[50]; // Maximum reasonable word length
-            
-            FindWordsRecursive(_root, availableLetters, availableBlanks, currentWord, 0, results);
-            
+
+            FindWordsRecursive(_root, letters, currentWord, 0, results);
+
             return results;
         }
 
@@ -61,45 +59,44 @@ namespace LexiconLookup
         {
             if (!_initialized)
                 throw new InvalidOperationException("Lexicon must be initialized before checking words.");
-            
+
             if (string.IsNullOrWhiteSpace(word))
                 return false;
-            
+
             string normalizedWord = word.ToUpperInvariant();
             TrieNode current = _root;
-            
+
             foreach (char character in normalizedWord)
             {
                 if (!current.Children.TryGetValue(character, out TrieNode? childNode))
                     return false;
-                
+
                 current = childNode;
             }
-            
+
             return current.IsWordEnd;
         }
 
         private void InsertWord(string word)
         {
             TrieNode current = _root;
-            
+
             foreach (char character in word)
             {
                 if (!current.Children.ContainsKey(character))
                 {
                     current.Children[character] = new TrieNode();
                 }
-                
+
                 current = current.Children[character];
             }
-            
+
             current.IsWordEnd = true;
         }
 
         private void FindWordsRecursive(
             TrieNode node,
-            Dictionary<char, int> availableLetters,
-            int availableBlanks,
+            LetterSet availableLetters,
             char[] currentWord,
             int depth,
             List<string> results)
@@ -116,25 +113,21 @@ namespace LexiconLookup
             {
                 char letter = child.Key;
                 TrieNode childNode = child.Value;
-                
-                // Try using an actual letter from available letters
-                if (availableLetters.TryGetValue(letter, out int count) && count > 0)
+
+                // Try consuming a real tile
+                if (availableLetters.TryUseLetter(letter))
                 {
-                    // Use the letter
-                    availableLetters[letter]--;
                     currentWord[depth] = letter;
-                    
-                    FindWordsRecursive(childNode, availableLetters, availableBlanks, currentWord, depth + 1, results);
-                    
-                    // Backtrack
-                    availableLetters[letter]++;
+                    FindWordsRecursive(childNode, availableLetters, currentWord, depth + 1, results);
+                    availableLetters.RestoreLetter(letter); // backtrack
                 }
-                // Try using a blank tile as this letter
-                else if (availableBlanks > 0)
+
+                // Try consuming a blank
+                if (availableLetters.TryUseBlank())
                 {
                     currentWord[depth] = letter;
-                    
-                    FindWordsRecursive(childNode, availableLetters, availableBlanks - 1, currentWord, depth + 1, results);
+                    FindWordsRecursive(childNode, availableLetters, currentWord, depth + 1, results);
+                    availableLetters.RestoreBlank(); // backtrack
                 }
             }
         }
