@@ -41,10 +41,10 @@ namespace LexiconLookup
                 }
                 else
                 {
-                    int index = _charToIndex.ContainsKey(letter) ? _charToIndex[letter] : -1;
-                    if (index >= 0)
+                    int idx = _charToIndex.TryGetValue(letter, out int index) ? index : -1;
+                    if (idx >= 0)
                     {
-                        _letterCounts[index] += kvp.Value;
+                        _letterCounts[idx] += kvp.Value;
                     }
                     else
                     {
@@ -88,7 +88,7 @@ namespace LexiconLookup
         /// <returns>The count of the letter, or 0 if not present.</returns>
         public int GetCount(char letter)
         {
-            int idx = _charToIndex.ContainsKey(letter) ? _charToIndex[letter] : -1;
+            int idx = _charToIndex.TryGetValue(letter, out int index) ? index : -1;
             return idx >= 0 ? _letterCounts[idx] : 0;
         }
 

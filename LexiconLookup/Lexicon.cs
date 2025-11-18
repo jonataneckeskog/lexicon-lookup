@@ -123,7 +123,7 @@ namespace LexiconLookup
                 }
 
                 // Try consuming a blank
-                if (availableLetters.TryUseBlank())
+                else if (availableLetters.TryUseBlank())
                 {
                     currentWord[depth] = letter;
                     FindWordsRecursive(childNode, availableLetters, currentWord, depth + 1, results);
